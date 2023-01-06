@@ -14,7 +14,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import javax.transaction.Transactional;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,12 +23,9 @@ import static com.team7.chaekin.global.error.errorcode.DomainErrorCode.*;
 @RequiredArgsConstructor
 @Service
 public class MeetingCommentService {
-
     private final MeetingCommentRepository meetingCommentRepository;
     private final MeetingRepository meetingRepository;
     private final MemberRepository memberRepository;
-
-    private final String DELETE_MESSAGE = "삭제된 댓글입니다.";
 
     @Transactional
     public MeetingCommentListResponse getMeetingComments(long meetingId, Pageable pageable) {
@@ -43,25 +39,13 @@ public class MeetingCommentService {
                 .forEach(mc -> {
                     if (mc.getParent() != null)
                         return;
-                    MeetingCommentParentDto parent = MeetingCommentParentDto.builder()
-                            .meetingCommentId(mc.isRemoved() ? 0L : mc.getId())
-                            .content(mc.isRemoved() ? DELETE_MESSAGE : mc.getContent())
-                            .writer(mc.isRemoved() ? "" : mc.getMember().getNickname())
-                            .createdAt(mc.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy.MM.dd HH.mm")))
-                            .isRemoved(mc.isRemoved()).build();
-
+                    MeetingCommentParentDto parent = MeetingCommentParentDto.toDto(mc);
                     List<MeetingCommentChildDto> children = mc.getChildren().stream()
                             .filter(child -> !child.isRemoved())
-                            .map(child -> MeetingCommentChildDto.builder()
-                                    .meetingCommentId(child.getId())
-                                    .content(child.getContent())
-                                    .writer(child.getMember().getNickname())
-                                    .createdAt(child.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy.MM.dd HH.mm")))
-                                    .build()).collect(Collectors.toList());
+                            .map(MeetingCommentChildDto::toDto)
+                            .collect(Collectors.toList());
 
-                    if (!parent.getIsRemoved() || children.size() > 0) {
-                        comments.add(new MeetingCommentListDto(parent, children));
-                    }
+                    saveComments(comments, parent, children);
                 });
         return new MeetingCommentListResponse(totalPages, comments);
     }
@@ -108,6 +92,12 @@ public class MeetingCommentService {
             throw new CustomException(DO_NOT_HAVE_AUTHORIZATION);
         }
         meetingComment.delete();
+    }
+
+    private void saveComments(List<MeetingCommentListDto> comments, MeetingCommentParentDto parent, List<MeetingCommentChildDto> children) {
+        if (!parent.getIsRemoved() || children.size() > 0) {
+            comments.add(new MeetingCommentListDto(parent, children));
+        }
     }
 
     private Meeting getMeeting(long meetingId) {

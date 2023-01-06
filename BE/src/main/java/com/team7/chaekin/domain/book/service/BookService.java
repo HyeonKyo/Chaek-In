@@ -88,30 +88,17 @@ public class BookService {
 
     @Transactional
     public BookCalendarResponse getCalendarData(int month, long memberId) {
-        Member member = getMember(memberId);
+        List<BookLog> bookLogs = findMyBookLogInThisMonth(memberId, month);
 
         LocalDate now = LocalDate.now();
-
-        LocalDate firstDate = LocalDate.of(now.getYear(), month, 1);
         int lastDay = now.lengthOfMonth();
-        LocalDate lastDate = firstDate.withDayOfMonth(lastDay);
+        BookCalendarListDto[] calenderList = makeMonthCalenderList(month, now, lastDay);
+
         int today = now.getMonthValue() == month ? now.getDayOfMonth() : lastDay;
-
-        List<BookLog> bookLogs = bookLogRepository
-                .findByMemberAndStartDateBetweenOrderByCreatedAt(member, firstDate, lastDate);
-
-        BookCalendarListDto[] calenderList = new BookCalendarListDto[lastDay];
-        for (int i = 0; i < lastDay; i++) {
-            String day = makeDayString(i);
-            calenderList[i] = BookCalendarListDto.builder()
-                    .date(now.getYear() + "-" + month + "-" + day)
-                    .books(new ArrayList<>()).build();
-        }
-
         bookLogs.stream().forEach(bookLog -> {
             boolean startFlag = false;
             int startDay = bookLog.getStartDate().getDayOfMonth();
-            if (bookLog.getStartDate().getMonthValue() != month) {
+            if (isPreviousMonth(month, bookLog)) {
                 startDay = 1;
                 startFlag = true;
             }
@@ -131,16 +118,7 @@ public class BookService {
                     isStart = false;
                     index = findFirstIndex(calenderList[startDay - 1].getBooks());
                 }
-
-                List<BookCalendarDto> calendarDtos = calenderList[i].getBooks();
-                while (calendarDtos.size() <= index) {
-                    calendarDtos.add(BookCalendarDto.builder().build());
-                }
-                BookCalendarDto bookCalendarDto = calendarDtos.get(index);
-                bookCalendarDto.setBookId(bookLog.getBook().getId());
-                bookCalendarDto.setTitle(bookLog.getBook().getTitle());
-                bookCalendarDto.setIsStartDay((i == startDay - 1) && !startFlag ? true : false);
-                bookCalendarDto.setIsEndDay((i == endDay - 1) && !endFlag ? true : false);
+                fillInCalenderData(calenderList[i], bookLog, startFlag, startDay, endFlag, endDay, index, i);
             }
         });
         return new BookCalendarResponse(calenderList);
@@ -176,6 +154,49 @@ public class BookService {
         BookLog bookLog = bookLogRepository.findBookLogByMemberIdAndBookId(memberId, bookId)
                 .orElseThrow(() -> new CustomException(BOOKLOG_IS_NOT_EXIST));
         bookLog.completeReadBook();
+    }
+
+    private boolean isPreviousMonth(int month, BookLog bookLog) {
+        return bookLog.getStartDate().getMonthValue() != month;
+    }
+
+    private void fillInCalenderData(BookCalendarListDto bookCalendarListDto, BookLog bookLog, boolean startFlag, int startDay, boolean endFlag, int endDay, int index, int i) {
+        List<BookCalendarDto> calendarDtos = bookCalendarListDto.getBooks();
+        while (calendarDtos.size() <= index) {
+            calendarDtos.add(BookCalendarDto.builder().build());
+        }
+        BookCalendarDto bookCalendarDto = calendarDtos.get(index);
+        setBookLogData(bookLog, startFlag, startDay, endFlag, endDay, i, bookCalendarDto);
+    }
+
+    private void setBookLogData(BookLog bookLog, boolean startFlag, int startDay, boolean endFlag, int endDay, int i, BookCalendarDto bookCalendarDto) {
+        bookCalendarDto.setBookId(bookLog.getBook().getId());
+        bookCalendarDto.setTitle(bookLog.getBook().getTitle());
+        bookCalendarDto.setIsStartDay((i == startDay - 1) && !startFlag ? true : false);
+        bookCalendarDto.setIsEndDay((i == endDay - 1) && !endFlag ? true : false);
+    }
+
+    private BookCalendarListDto[] makeMonthCalenderList(int month, LocalDate now, int lastDay) {
+        BookCalendarListDto[] calenderList = new BookCalendarListDto[lastDay];
+        for (int i = 0; i < lastDay; i++) {
+            String day = makeDayString(i);
+            calenderList[i] = BookCalendarListDto.builder()
+                    .date(String.format("%d-%d-%s", now.getYear(), month, day))
+                    .books(new ArrayList<>()).build();
+        }
+        return calenderList;
+    }
+
+    private List<BookLog> findMyBookLogInThisMonth(long memberId, int month) {
+        Member member = getMember(memberId);
+
+        LocalDate now = LocalDate.now();
+        LocalDate firstDate = LocalDate.of(now.getYear(), month, 1);
+        int lastDay = now.lengthOfMonth();
+        LocalDate lastDate = firstDate.withDayOfMonth(lastDay);
+
+        return bookLogRepository
+                .findByMemberAndStartDateBetweenOrderByCreatedAt(member, firstDate, lastDate);
     }
 
     private Book getBook(long bookId) {

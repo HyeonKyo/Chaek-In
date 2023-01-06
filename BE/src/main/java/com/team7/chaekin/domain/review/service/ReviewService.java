@@ -74,16 +74,19 @@ public class ReviewService {
             if (isNotBookRating(book, dto)) {
                 continue;
             }
-
             book.addScore(dto.getScore());
-            BookLog bookLog = bookLogRepository.save(BookLog.builder()
-                    .book(book)
-                    .member(member)
-                    .readStatus(ReadStatus.COMPLETE).build());
-            reviewRepository.save(Review.builder()
-                            .bookLog(bookLog)
-                            .score(dto.getScore()).build());
+            saveFirstData(member, book, dto);
         }
+    }
+
+    private void saveFirstData(Member member, Book book, ReviewFirstDto dto) {
+        BookLog bookLog = bookLogRepository.save(BookLog.builder()
+                .book(book)
+                .member(member)
+                .readStatus(ReadStatus.COMPLETE).build());
+        reviewRepository.save(Review.builder()
+                        .bookLog(bookLog)
+                        .score(dto.getScore()).build());
     }
 
     @Transactional
